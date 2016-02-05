@@ -84,7 +84,7 @@ sub decompress {
 	use File::Temp();
 	my $tmpfh=File::Temp->new( UNLINK=>0, SUFFIX=>'.sar');
 	my $tmpfn=$tmpfh->filename;
-	qx{ {  gzip -c -d "$file" || xz -c -d "$file" || bzip2 -c -d "$file" ; } >$tmpfn };
+	qx{ {  gzip -c -d "$file" || xz -c -d "$file" || bzip2 -c -d "$file" ; } 2>/dev/null >$tmpfn };
 	return ($? >> 8 == 0) ? $tmpfn : $file;
 }
 
