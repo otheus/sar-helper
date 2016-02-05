@@ -1,0 +1,29 @@
+# sysstat crontab examples.
+
+# Run system activity accounting tool every 5 minutes
+# by taking a sample every 5 seconds (12 samples per minute, 60 samples)
+# between the hours of 7am and 11pm. During the other times,
+# only 1 sample per minute. Wrap it within *timeout* to prevent
+# starved processes from corrupting the file. (sadc should exit
+# after N - I + 1 seconds, where I is sampling interval and N is 
+# total number of samples)
+#
+# Use -S XALL because that gets everything.  Without it, you miss
+# certain disk-level IO stats and things like TCP and NFS stats.
+#
+*/5 7-23 * * * root timeout 296 /usr/lib64/sa/sadc -L -F -S XALL 5 60 -
+* 0-6,20-23 * * * root /usr/lib64/sa/sadc -L -F -S XALL 1 1 -
+# 
+# Generate a daily summary of process accounting at 23:58
+# (takes up a lot of disk space and is generally not necessary)
+58 23 * * * root /usr/lib64/sa/sa2 -A
+#
+# Remove the log file to be overwritten at the top of the day
+# make sure it doesn't remove a new file.
+59 23 * * * root timeout 50 /bin/rm -f /var/log/sa/sa`date --date=tomorrow +\%d`
+#
+# Compress logfiles from last week:
+# xz files are 40% the size of gz files. Compared to original,
+# xz compresses at a 73:1 ratio, gzip gets 35:1 ratio. 
+# But gzip requires substantially fewer CPU resources
+56 23 * * * root xz -f /var/log/sa/sa`date --date="last week" +\%d`

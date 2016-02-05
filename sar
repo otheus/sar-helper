@@ -1,0 +1,105 @@
+#!/bin/env perl
+# A simple wrapper for sar
+
+=pod
+
+=head1 B<sar> 
+
+=head2 Usage: sar -f <argument> <other sar args>
+
+
+This is a wrapper for C<sar>. It magically hanles the C<-f> option. All other options
+are passed verbatim to sar.  If the argument to the C<-f> option:
+
+=over
+
+=item * 
+
+exists and can be opened, then treat as-is.
+
+=item * 
+
+is a number, then we assume it's the day-of-the-month and we simply prepend /var/lib/sa/sa.
+
+=item * 
+
+(possibly after previous step) does not exist, try to decompress. 
+The decompressed file is saved as a tempfile (see mktemp). It is 
+removed when the program completes. 
+
+=back
+
+Decompression tries first gzip, then xz, then bzip2.
+
+=head2 VERSION
+
+1.0  2016-02-05
+
+=head2 AUTHOR
+
+otheus <otheus@gmail.com>
+
+=head2 CHANGELOG
+
+2016-02-05  1.0  Initial version
+
+=cut
+
+my $SAR=($ENV{"SAR"}||"/usr/bin/sar");
+my $SADIR=($ENV{"SADIR"}||"/var/log/sa");
+my @opts=();
+sub sarfile {
+	my $sarfile=shift;
+	if (!defined $sarfile) { return undef; } # recursion check
+	if (-f $sarfile) { 
+		# The file exists: use it.
+		my $filetype=`file $sarfile`;
+		$filetype =~ s/^.*?: (\S+).*/\1/s;
+		if ($filetype eq "data") {
+			# Normal file. use as is.
+			return $sarfile;
+		}
+		else {
+			# try to decompress, return tmpfile 
+			return &decompress($sarfile);
+		}
+	}
+	elsif ( $sarfile =~ /^\d+$/ ) {
+		# Looks like just the day. Prepend directory, try again.
+		return &sarfile($SADIR."/sa".$sarfile);
+	}
+	else {
+		# Not found, try adding an extension
+		my @glob=glob($sarfile.".*");
+		if (defined $glob[0]) { 
+			return &decompress($glob[0]);
+		}
+		else {
+			return undef;
+		}
+	}
+}
+sub decompress {
+	my $file=shift;
+	use File::Temp();
+	my $tmpfh=File::Temp->new( UNLINK=>0, SUFFIX=>'.sar');
+	my $tmpfn=$tmpfh->filename;
+	qx{ {  gzip -c -d "$file" || xz -c -d "$file" || bzip2 -c -d "$file" ; } >$tmpfn };
+	return ($? >> 8 == 0) ? $tmpfn : $file;
+}
+
+while ($#ARGV >= 0) { 
+	my $opt=shift @ARGV;
+	if (substr($opt,0,2) eq '-f') {
+		my $newfile = &sarfile(shift @ARGV);
+		die "Refusing to run sar: we can't do anything with -f $sarfile" unless defined $newfile;
+		push @opts,"-f",$newfile;
+		END { unlink($newfile) if $newfile =~ /.sar$/; }
+	}
+	else {
+		push @opts,$opt;
+	}
+}
+system ($SAR,@opts);
+die "exec of $SAR ".join(" ",@opts)."failed: $!" if $? == -1;
+exit ($?>>8);
